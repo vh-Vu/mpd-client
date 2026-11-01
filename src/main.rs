@@ -17,15 +17,9 @@ use tokio::sync::mpsc::{Receiver,Sender};
 pub enum MpdEvent {
     ConnectionState(State),
     Command(String),
-    // SubsystemEvent(Event),
 }
 
 
-// pub enum MpdEvent {
-//     Connected,
-//     Disconnected,
-//     Changed(Vec<String>),
-// }
 #[derive(Debug)]
 enum State{
     Connected,
@@ -57,11 +51,9 @@ impl State{
     }
 }
 
-/// Lệnh điều khiển gửi từ Main UI tới Task Command
 #[derive(Debug)]
 pub struct MpdCommand {
     pub command: String,
-    // Kênh hồi đáp kết quả riêng cho từng lệnh
     pub responder: mpsc::Sender<Result<Vec<String>, String>>,
 }
 
@@ -71,17 +63,73 @@ pub struct MpdCommand {
 const DEFAULT_PORT: u16 = 6600;
 const LOCAL_HOST: &str = "127.0.0.1";
 
+use qtbridge::{QApp, qobject};
+// #[derive(Default)]
+pub struct Backend{
+    is_play: bool
+}
+use std::sync::OnceLock;
+static MPD_SENDER: OnceLock<mpsc::Sender<MpdEvent>> = OnceLock::new();
+// #[qobject(Singleton)]
+#[qobject]
+impl Backend{
+    #[qslot]
+    fn say_hello(&self){
+        println!("hello");
+    }
+    #[qslot]
+    fn toggle_play(&mut self){
+        if let Some(tx) = MPD_SENDER.get() {
+            let txx = tx.clone();
+            let is_play = self.is_play;
+                                // let _ = txx.send(MpdEvent::Command("play\n".to_string()));
+
+            tokio::spawn(async move{
+                if is_play {
+                let _ = txx.send(MpdEvent::Command(format!("pause\n"))).await;
+                }else{
+                    println!("here {}",is_play);
+                                                    let _ = txx.send(MpdEvent::Command("play\n".to_string())).await;
+
+                }
+            });
+            
+            self.is_play = !self.is_play
+        }
+    }
+
+}
+
+impl  Default for Backend {
+    fn default() -> Self {
+        Self { is_play: false }
+    }
+}
+
 use std::io::{self, Write};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-   
+// fn main() {
     let (tx,rx) = mpsc::channel::<MpdEvent>(32);
-    let txx = tx.clone();
-    tokio::spawn( async move{
-        test(txx).await
-    });
+    // let txx = tx.clone();
+    MPD_SENDER.set(tx.clone()).map_err(|_| "Failed to set sender")?;
     let mut lifetime_manager = LifetimeCycle::new(tx,rx);
-    lifetime_manager.run().await;
+
+    tokio::spawn(async move{
+        lifetime_manager.run().await;
+    });
+    QApp::new()
+        .register::<Backend>()
+        .load_qml(include_bytes!("../GUI/Main.qml"))
+        .run();
+    // 
+    // let txx = tx.clone();
+    // tokio::spawn( async move{
+    //     test(txx).await
+    // });
+    // let mut lifetime_manager = LifetimeCycle::new(tx,rx);
+    // lifetime_manager.run().await;
+
     Ok(())
 }
     
@@ -89,18 +137,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn test(sender: Sender<MpdEvent>) {
     loop{
         let mut input = String::new();
-
-        // print!("Please enter some text: ");
-        // Flush stdout to guarantee the prompt appears before reading input
         io::stdout().flush().expect("Failed to flush stdout");
 
-        // 2. Read the line from the console
         io::stdin()
             .read_line(&mut input)
             .expect("Failed to read line");
-
-        // 3. Clean up the trailing newline (\n or \r\n) and print
-        // println!("You typed: {}", input.trim());
         let _ = sender.send(MpdEvent::Command(input)).await;
     }
    
@@ -145,13 +186,17 @@ impl LifetimeCycle {
                     MpdEvent::ConnectionState(state) => {
                         match state {
                             State::Disconnected => {
+                                //TODO
                                 break;
                             },
                             State::Connected => {//sending message to upper
+                                //TODO
+                                println!("ready");
                             },
                         }
                     }
                     MpdEvent::Command(cmd) => {
+                        println!("ha");
                         let _ = tx_command.send(cmd).await;
                     }
                 }
@@ -192,6 +237,7 @@ async fn worker(addr: String, tx_events: mpsc::Sender<MpdEvent>, mut rx_command:
                                 Ok(_) => {
                                     let trimmed = line.trim();
                                     println!("{}",trimmed);
+                                    //TODO
                                     if trimmed == "OK" || trimmed.starts_with("ACK") {
                                         break;
                                     }
@@ -223,8 +269,7 @@ async fn worker(addr: String, tx_events: mpsc::Sender<MpdEvent>, mut rx_command:
         },
         Err(_) => {},
     }
-        println!("woker sap");
-
+    println!("woker sap");
     let _  = tx_events.send(State::Disconnected.into()).await;
 
 }
@@ -232,7 +277,6 @@ async fn worker(addr: String, tx_events: mpsc::Sender<MpdEvent>, mut rx_command:
 
 
 async fn watcher(addr: String, tx_events: mpsc::Sender<MpdEvent>) {
-
     match TcpStream::connect(addr).await {
         Ok(stream) => {
             let _ = tx_events.send(State::Connected.into()).await;
@@ -259,7 +303,7 @@ async fn watcher(addr: String, tx_events: mpsc::Sender<MpdEvent>) {
                                 if response == "OK" || response == "ACK"{
                                     break;
                                 }else if let Some(sub) = response.strip_prefix("changed: "){
-                                    // sending
+                                    // TODO
                                      println!("{}",sub);
 
                                 }
