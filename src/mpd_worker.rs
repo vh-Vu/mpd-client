@@ -4,12 +4,9 @@ use tokio::sync::mpsc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{self,Duration};
 
+use crate::protocol::{Command, DataEvent, Song, parse_status, MpdWorkerEvent};
 
-#[derive(Debug)]
-pub enum MpdWorkerEvent{
-    Connected(Sender<Command>),
-    Disconnected,
-}
+
 
 enum InternalProtocol {
     Database,
@@ -29,16 +26,12 @@ enum InternalProtocol {
     Unknown,
 }
 
-pub enum Command{
-    Play,
-    Next,
-    Pause,
-    Previous,
-}
+
+
 pub struct MpdWorker {}
 
 impl MpdWorker{
-    pub async fn run(address: &str, sender: Sender<MpdWorkerEvent>){
+    pub async fn run(address: &str, sender: Sender<MpdWorkerEvent>,dtx: Sender<DataEvent>){
         let command = TcpStream::connect(address).await;
         let idle = TcpStream::connect(address).await;
         if command.is_err() || idle.is_err(){
@@ -48,11 +41,16 @@ impl MpdWorker{
         let (tx,rx) = mpsc::channel::<InternalProtocol>(32);
         let watcher = tokio::spawn(async move{ watcher(idle.unwrap(),tx).await});
         let (send, rece) = mpsc::channel::<Command>(32);
-        let worker = tokio::spawn(async move{ woker(command.unwrap(),rx,rece).await});
+        let worker = tokio::spawn(async move{ worker(command.unwrap(),rx,rece,dtx).await});
 
 
         let _ = sender.send(MpdWorkerEvent::Connected(send)).await;
-        let _ = tokio::join!(watcher,worker);
+                                        println!("send?");
+
+        tokio::select! {
+            _res = worker => {},
+            _res = watcher => {},
+        }
         let _ = sender.send(MpdWorkerEvent::Disconnected).await;
     }
 }
@@ -99,7 +97,7 @@ async fn watcher(stream: TcpStream,sender_internal: Sender<InternalProtocol>){
     }
 }
 
-async fn woker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtocol>, mut receiver_command: Receiver<Command>){
+async fn worker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtocol>, mut receiver_command: Receiver<Command>,dtx: Sender<DataEvent>){
     let (reader, mut writer) = tokio::io::split(stream);
     let mut buf_reader = BufReader::new(reader);
     let mut greeting = String::new();
@@ -116,26 +114,54 @@ async fn woker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtoc
         tokio::select! {
             // TODO with resonpse UI command
             Some(cmd) = receiver_command.recv() =>{
-                let cmd: &str = cmd.into();
                 if writer.write_all(cmd.as_bytes()).await.is_err() || writer.flush().await.is_err() {
                     break 'cmd_loop;
                 }
-                let mut line = String::new();
+                // cmd;
+                // let mut line = String::new();
+                let mut l = Vec::new(); 
                 loop {
                     line.clear();
                     match buf_reader.read_line(&mut line).await {
                         Ok(0) | Err(_) => break 'cmd_loop,
                         Ok(_) => {
-                            let trimmed = line.trim();
+                            let trimmed: String = line.trim().to_string();
                             println!("{}",trimmed);
                             //TODO
                             if trimmed == "OK" || trimmed.starts_with("ACK") {
                                 break;
                             }
+                            l.push(trimmed);
                         }
                     }
                 }
+                match cmd {
+                    Command::CurrentSong => {
+                        let mut song = Song::default();
+                        for li in l{
+                            let p = li.find(':').unwrap();
+                            let att = &li[0..p];
+                            match att{
+                                "file" => song.file = li[p+1..].trim().to_string(),
+                                "Title" => song.title = li[p+1..].trim().to_string(),
+                                _ => {}
+                            }
+                            // if att == "file"{
+                            //     song.file = att
+                            // }
+                        }
+                        // se
+                        let _ = dtx.send(DataEvent::CurrentSong(song)).await;
 
+                    },
+                    Command::Status => {
+                        let status = parse_status(l);
+                        let _ = dtx.send(DataEvent::Status(status)).await;
+                    }
+                    _ => {
+
+                    }
+                }
             },
             Some(mess) = receiver_internal.recv() => {
                 let req = match mess{
@@ -145,7 +171,7 @@ async fn woker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtoc
                 if writer.write_all(req.as_bytes()).await.is_err() || writer.flush().await.is_err() {
                     break 'cmd_loop;
                 }
-                let mut line = String::new();
+                // let mut line = String::new();
                 loop {
                     line.clear();
                     match buf_reader.read_line(&mut line).await {
@@ -165,7 +191,7 @@ async fn woker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtoc
                 if writer.write_all(b"ping\n").await.is_err() || writer.flush().await.is_err() {
                     break 'cmd_loop;
                 }
-                let mut line = String::new();
+                // let mut line = String::new();
                 loop {
                     line.clear();
                     match buf_reader.read_line(&mut line).await {
@@ -185,13 +211,3 @@ async fn woker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtoc
 }
 
 
-impl From<Command> for &str{
-    fn from(cmd: Command) -> Self {
-        match cmd {
-            Command::Play => "play\n",
-            Command::Pause => "pause\n",
-            Command::Next => "next\n",
-            Command::Previous => "previous\n",
-        }
-    }
-}
