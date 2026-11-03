@@ -1,41 +1,107 @@
+#[derive(Default,Debug)]
 pub struct Status{
-    volume: i8,
-    repeat: bool,
-    random: bool,
-    single: Mode,
-    comsume: Mode,
-    partition: String,
-    playlist: u32,
-    playlistlength: i32,
-    mixrampdb: i32,
-    state: State,
-    lastloadedplaylist: String,
-    song: u32,
-    songid: u32,
-    elapsed: f32,
-    bitrate: u32,
-    duration: f32,
-    audio: String,
-    nextsong: u32,
-    nextsongid: u32,
+    pub volume: i8,
+    pub repeat: bool,
+    pub random: bool,
+    pub single: Mode,
+    pub consume: Mode,
+    pub partition: String,
+    pub playlist: u32,
+    pub playlistlength: i32,
+    pub mixrampdb: i32,
+    pub state: State,
+    pub lastloadedplaylist: String,
+    pub song: u32,
+    pub songid: u32,
+    pub elapsed: f32,
+    pub bitrate: u32,
+    pub duration: f32,
+    pub audio: String,
+    pub nextsong: u32,
+    pub nextsongid: u32,
 }
 
+ pub fn parse_status(lines: Vec<String>) -> Status{
+    let mut status = Status::default();
+    for line in lines{
+        let p = line.find(':').unwrap();
+        let key = &line[..p];
+        let value = line[p+1..].trim();
+        match key {
+            "volume" 
+                => status.volume = value.parse::<i8>().unwrap(),
+            "repeat" 
+                => status.repeat = value == "1",
+            "random" 
+                => status.random = value == "1",
+            "single" 
+                => status.single = match value {
+                                        "0" => Mode::Off,
+                                        "1" => Mode::On,
+                                        _   => Mode::OneShot
+                                    },
+            "consume" 
+                => status.consume = match value {
+                                    "0" => Mode::Off,
+                                    "1" => Mode::On,
+                                    _   => Mode::OneShot
+                                },
+            "partition" 
+                => status.partition = value.to_string(),
+            "playlist" 
+                => status.playlist = value.parse::<u32>().unwrap(),
+            "playlistlength" 
+                => status.playlistlength = value.parse::<i32>().unwrap(),
+            "mixrampdb" 
+                => status.mixrampdb = value.parse::<i32>().unwrap(),
+            "state" 
+                => status.state = match value {
+                                        "play" => State::Play,
+                                        "pause" => State::Pause,
+                                        _   => State::Stop,
+                                    },
+            "lastloadedplaylist" 
+                => status.lastloadedplaylist = value.to_string(),
+            "song" 
+                => status.song = value.parse::<u32>().unwrap(),            
+            "songid" 
+                => status.songid = value.parse::<u32>().unwrap(),
+            "elapsed" 
+                => status.elapsed = value.parse::<f32>().unwrap(),
+            "bitrate" 
+                => status.bitrate = value.parse::<u32>().unwrap(),
+            "duration" 
+                => status.duration = value.parse::<f32>().unwrap(),
+            "audio" 
+                => status.audio = value.to_string(),
+            "nextsong" 
+                => status.nextsong = value.parse::<u32>().unwrap(),
+            "nextsongid" 
+                => status.nextsongid = value.parse::<u32>().unwrap(),
+            _ => {},
+        }
+    }
+    status
+}
 
+#[derive(Default,Debug)]
 pub enum State{
     Play,
+    #[default]
     Pause,
     Stop,
 }
+#[derive(Default,Debug)]
 
 pub enum Mode{
     On,
+    #[default]
     Off,
     OneShot,
 }
 
 
-
-
+#[derive(Default,Debug)]
 pub struct Song{
     pub file: String,
     pub title: String,
@@ -55,24 +121,26 @@ pub struct Song{
 }
 
 
-impl Default for Song{
-    fn default() -> Self {
-        Self {  
-            file: String::new(), 
-            title: String::new(), 
-            artist: Vec::new(), 
-            album: String::new(), 
-            date: String::new(), 
-            genre: Vec::new(), 
-            composer: Vec::new(), 
-            album_artist: Vec::new(), 
-            track: None, 
-            disc: None, 
-            label: String::new(), 
-            time: 0, 
-            duration: 0.0, 
-            pos: 0, 
-            id: 0
+
+#[derive(Debug,Clone)]
+pub enum Command{
+    Play,
+    Next,
+    Pause,
+    Previous,
+    CurrentSong,
+    Status,
+}
+
+impl Command{
+    pub fn as_bytes(&self) -> &[u8]{
+        match self {
+            Command::Play => b"play\n",
+            Command::Pause => b"pause\n",
+            Command::Next => b"next\n",
+            Command::Previous => b"previous\n",
+            Command::CurrentSong => b"currentsong\n",
+            Command::Status => b"status\n",
         }
     }
 }
