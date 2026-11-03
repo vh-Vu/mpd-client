@@ -21,7 +21,7 @@ pub struct Status{
     pub nextsongid: u32,
 }
 
- pub fn parse_status(lines: Vec<String>) -> Status{
+pub fn parse_status(lines: Vec<String>) -> Status{
     let mut status = Status::default();
     for line in lines{
         let p = line.find(':').unwrap();
@@ -82,6 +82,45 @@ pub struct Status{
         }
     }
     status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_status_success() {
+        let raw_data = "volume: 91\n\
+            repeat: 0\n\
+            random: 0\n\
+            single: 0\n\
+            consume: 0\n\
+            partition: default\n\
+            playlist: 19\n\
+            playlistlength: 7\n\
+            mixrampdb: 0\n\
+            state: pause\n\
+            lastloadedplaylist: \n\
+            song: 1\n\
+            songid: 17\n\
+            time: 260:299\n\
+            elapsed: 259.598\n\
+            bitrate: 1139\n\
+            duration: 298.640\n\
+            audio: 44100:16:2\n\
+            nextsong: 2\n\
+            nextsongid: 18";
+       
+        let v: Vec<String> = raw_data.split('\n').map(|l| l.to_string()).collect();
+        let status = parse_status(v);
+        assert!(matches!(status.state, State::Pause));
+        assert_eq!(status.songid,17);
+        assert_eq!(status.elapsed, 259.598);
+        assert_eq!(status.volume, 91);
+        assert!(matches!(status.single, Mode::Off));
+
+    }
+
 }
 
 #[derive(Default,Debug)]
