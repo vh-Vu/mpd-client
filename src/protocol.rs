@@ -1,3 +1,4 @@
+use tokio::sync::mpsc::Sender;
 #[derive(Default,Debug)]
 pub struct Status{
     pub volume: i8,
@@ -182,4 +183,16 @@ impl Command{
             Command::Status => b"status\n",
         }
     }
+}
+
+
+pub enum DataEvent {
+    Status(Status),
+    CurrentSong(Song),
+}
+
+#[derive(Debug)]
+pub enum MpdWorkerEvent{
+    Connected(Sender<Command>),
+    Disconnected,
 }
