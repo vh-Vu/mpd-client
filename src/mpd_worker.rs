@@ -4,27 +4,10 @@ use tokio::sync::mpsc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{self,Duration};
 
-use crate::protocol::{Command, DataEvent, Song, parse_status, MpdWorkerEvent};
+use crate::protocol::{ChangedEvent, Command, DataEvent, MpdWorkerEvent, Song, parse_status};
 
 
 
-enum InternalProtocol {
-    Database,
-    Update,
-    Playlist,
-    StoredPlaylist,
-    Player,
-    Mixer,
-    Output,
-    Options,
-    Partition,
-    Sticker,
-    Subscription,
-    Message,
-    Neihbor,
-    Mount,
-    Unknown,
-}
 
 
 
@@ -38,10 +21,10 @@ impl MpdWorker{
             let _ = sender.send(MpdWorkerEvent::Disconnected).await;
             return ;
         }
-        let (tx,rx) = mpsc::channel::<InternalProtocol>(32);
-        let watcher = tokio::spawn(async move{ watcher(idle.unwrap(),tx).await});
-        let (send, rece) = mpsc::channel::<Command>(32);
-        let worker = tokio::spawn(async move{ worker(command.unwrap(),rx,rece,dtx).await});
+        let tx = sender.clone();
+        let watcher = tokio::spawn(async move{ watcher(idle.unwrap(), tx).await});
+        let (send, rx) = mpsc::channel::<Command>(32);
+        let worker = tokio::spawn(async move{ worker(command.unwrap(), rx,dtx).await});
 
 
         let _ = sender.send(MpdWorkerEvent::Connected(send)).await;
@@ -57,7 +40,7 @@ impl MpdWorker{
 
 
 
-async fn watcher(stream: TcpStream,sender_internal: Sender<InternalProtocol>){
+async fn watcher(stream: TcpStream,sender_to_master: Sender<MpdWorkerEvent>){
 
     let (reader, mut writer) = tokio::io::split(stream);
     let mut buf_reader = BufReader::new(reader);
@@ -83,10 +66,10 @@ async fn watcher(stream: TcpStream,sender_internal: Sender<InternalProtocol>){
                     }else if let Some(rep) = response.strip_prefix("changed: "){
                         // TODO
                         let mess = match rep {
-                            "player" => InternalProtocol::Player,
-                            _ => InternalProtocol::Unknown,
+                            "player" => MpdWorkerEvent::Changed(ChangedEvent::Player),
+                            _ => MpdWorkerEvent::Changed(ChangedEvent::Unknown),
                         };
-                        let _  = sender_internal.send(mess).await;
+                        let _  = sender_to_master.send(mess).await;
                     }
                     else{
                         break 'idle;
@@ -97,7 +80,7 @@ async fn watcher(stream: TcpStream,sender_internal: Sender<InternalProtocol>){
     }
 }
 
-async fn worker(stream: TcpStream, mut receiver_internal: Receiver<InternalProtocol>, mut receiver_command: Receiver<Command>,dtx: Sender<DataEvent>){
+async fn worker(stream: TcpStream, mut receiver_command: Receiver<Command>,dtx: Sender<DataEvent>){
     let (reader, mut writer) = tokio::io::split(stream);
     let mut buf_reader = BufReader::new(reader);
     let mut greeting = String::new();
@@ -126,7 +109,7 @@ async fn worker(stream: TcpStream, mut receiver_internal: Receiver<InternalProto
                         Ok(0) | Err(_) => break 'cmd_loop,
                         Ok(_) => {
                             let trimmed: String = line.trim().to_string();
-                            println!("{}",trimmed);
+                            // println!("{}",trimmed);
                             //TODO
                             if trimmed == "OK" || trimmed.starts_with("ACK") {
                                 break;
@@ -155,35 +138,15 @@ async fn worker(stream: TcpStream, mut receiver_internal: Receiver<InternalProto
 
                     },
                     Command::Status => {
-                        let status = parse_status(l);
-                        let _ = dtx.send(DataEvent::Status(status)).await;
+                        match parse_status(l){
+                            Ok(status) => {let _ = dtx.send(DataEvent::Status(status)).await;},
+                            Err(_) => {},
+                        }
+                        
+                        
                     }
                     _ => {
 
-                    }
-                }
-            },
-            Some(mess) = receiver_internal.recv() => {
-                let req = match mess{
-                    InternalProtocol::Player => "currentsong\n",
-                    _ => "",
-                };
-                if writer.write_all(req.as_bytes()).await.is_err() || writer.flush().await.is_err() {
-                    break 'cmd_loop;
-                }
-                // let mut line = String::new();
-                loop {
-                    line.clear();
-                    match buf_reader.read_line(&mut line).await {
-                        Ok(0) | Err(_) => break 'cmd_loop,
-                        Ok(_) => {
-                            let trimmed = line.trim();
-                            println!("{}",trimmed);
-                            //TODO
-                            if trimmed == "OK" || trimmed.starts_with("ACK") {
-                                break;
-                            }
-                        }
                     }
                 }
             },
