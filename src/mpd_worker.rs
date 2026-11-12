@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{self,Duration};
 
-use crate::protocol::{ChangedEvent, Command, DataEvent, MpdWorkerEvent, Song, parse_status};
+use crate::protocol::{ChangedEvent, Command, DataEvent, MpdWorkerEvent, Song, parse_status,parse_song,parse_queue};
 
 
 
@@ -28,12 +28,14 @@ impl MpdWorker{
 
 
         let _ = sender.send(MpdWorkerEvent::Connected(send)).await;
-                                        println!("send?");
+                                        // println!("send?");
 
         tokio::select! {
             _res = worker => {},
             _res = watcher => {},
         }
+                                                println!("disc?");
+
         let _ = sender.send(MpdWorkerEvent::Disconnected).await;
     }
 }
@@ -65,8 +67,10 @@ async fn watcher(stream: TcpStream,sender_to_master: Sender<MpdWorkerEvent>){
                         break;
                     }else if let Some(rep) = response.strip_prefix("changed: "){
                         // TODO
+                        // println!("{")
                         let mess = match rep {
                             "player" => MpdWorkerEvent::Changed(ChangedEvent::Player),
+                            "playlist" => MpdWorkerEvent::Changed(ChangedEvent::Playlist),
                             _ => MpdWorkerEvent::Changed(ChangedEvent::Unknown),
                         };
                         let _  = sender_to_master.send(mess).await;
@@ -120,22 +124,10 @@ async fn worker(stream: TcpStream, mut receiver_command: Receiver<Command>,dtx: 
                 }
                 match cmd {
                     Command::CurrentSong => {
-                        let mut song = Song::default();
-                        for li in l{
-                            let p = li.find(':').unwrap();
-                            let att = &li[0..p];
-                            match att{
-                                "file" => song.file = li[p+1..].trim().to_string(),
-                                "Title" => song.title = li[p+1..].trim().to_string(),
-                                _ => {}
-                            }
-                            // if att == "file"{
-                            //     song.file = att
-                            // }
-                        }
-                        // se
-                        let _ = dtx.send(DataEvent::CurrentSong(song)).await;
-
+                        match parse_song(l) {
+                            Ok(song) => {let _ = dtx.send(DataEvent::CurrentSong(song)).await;}
+                            _ => {},
+                        };
                     },
                     Command::Status => {
                         match parse_status(l){
@@ -145,6 +137,9 @@ async fn worker(stream: TcpStream, mut receiver_command: Receiver<Command>,dtx: 
                         
                         
                     }
+                    Command::GetQueue => {
+                        let _ = dtx.send(DataEvent::Queue(parse_queue(l))).await;
+                    },
                     _ => {
 
                     }
@@ -154,7 +149,6 @@ async fn worker(stream: TcpStream, mut receiver_command: Receiver<Command>,dtx: 
                 if writer.write_all(b"ping\n").await.is_err() || writer.flush().await.is_err() {
                     break 'cmd_loop;
                 }
-                // let mut line = String::new();
                 loop {
                     line.clear();
                     match buf_reader.read_line(&mut line).await {

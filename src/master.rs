@@ -49,9 +49,7 @@ impl Master{
                                 let _  = sender_worker.send(Command::Status).await;
                                 self.sender_worker = Some(sender_worker.clone());
 
-                                // let _  = sender_worker.send(Command::CurrentSong).await;
                                 self.handle.invoke_mut(move |backend| backend.assign(sender_worker));
-                                // handle.clone();
                             },
                             MpdWorkerEvent::Disconnected => {   
                                 break 'select;

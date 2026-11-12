@@ -152,7 +152,6 @@ mod tests {
         let song = result.unwrap();
         assert_eq!(song.composer,vec!["Kazuhito Kikuchi"]);
         assert_eq!(song.artist,vec!["alan"]);
-        // assert_eq!(song.track,None);
         assert_eq!(song.track,0);
         assert_eq!(song.time,192);
         assert_eq!(song.duration,192.000);
