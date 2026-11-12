@@ -25,10 +25,17 @@ Item {
 
     Text{
         // id: 
-        text: container.currentPosition + "  " + container.duration  + " "  + slider.value + " " + is_play
+        text: `${formatDuration(slider.value)}/${formatDuration(container.duration)}`
+        //   + " "  + slider.value + " " + is_play
         color: "red"
         anchors{
             left: slider.right
+        }
+        function formatDuration(seconds) {
+            if (!seconds || seconds <= 0) return "--:--";
+            var mins = Math.floor(seconds / 60);
+            var secs = Math.floor(seconds % 60);
+            return mins + ":" + (secs < 10 ? "0" : "") + secs;
         }
     }
     Slider {
@@ -45,7 +52,7 @@ Item {
             property: "value"
             from: slider.value
             to: container.duration
-            duration: (slider.duration - slider.value) * 1000
+            duration: (container.duration - slider.value) * 1000
             running: !slider.pressed && is_play
         }
         onPressedChanged:{

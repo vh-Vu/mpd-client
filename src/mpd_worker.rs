@@ -101,7 +101,8 @@ async fn worker(stream: TcpStream, mut receiver_command: Receiver<Command>,dtx: 
         tokio::select! {
             // TODO with resonpse UI command
             Some(cmd) = receiver_command.recv() =>{
-                if writer.write_all(cmd.as_bytes()).await.is_err() || writer.flush().await.is_err() {
+                let tra: Vec<u8> = cmd.as_bytes();
+                if writer.write_all(&tra).await.is_err() || writer.flush().await.is_err() {
                     break 'cmd_loop;
                 }
                 // cmd;
@@ -146,20 +147,33 @@ async fn worker(stream: TcpStream, mut receiver_command: Receiver<Command>,dtx: 
                 }
             },
             _ = ping_interval.tick() => {
-                if writer.write_all(b"ping\n").await.is_err() || writer.flush().await.is_err() {
+                // if writer.write_all(b"ping\n").await.is_err() || writer.flush().await.is_err() {
+                //     break 'cmd_loop;
+                // }
+                if writer.write_all(b"status\n").await.is_err() || writer.flush().await.is_err() {
                     break 'cmd_loop;
                 }
+                let mut l = Vec::new(); 
                 loop {
                     line.clear();
                     match buf_reader.read_line(&mut line).await {
                         Ok(0) | Err(_) => break 'cmd_loop,
                         Ok(_) => {
-                            let trimmed = line.trim();
+                            let trimmed: String = line.trim().to_string();
+                            // println!("{}",trimmed);
+                            //TODO
                             if trimmed == "OK" || trimmed.starts_with("ACK") {
                                 break;
                             }
+                            l.push(trimmed);
                         }
+                        
                     }
+                    
+                }
+                match parse_status(l){
+                    Ok(status) => {let _ = dtx.send(DataEvent::Status(status)).await;},
+                    Err(_) => {},
                 }
             }
         }

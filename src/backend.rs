@@ -12,21 +12,22 @@ pub struct Backend{
     sender_to_worker: Option<Sender<Command>>,
     queue: Vec<Rc<RefCell<Song>>>,
     current_id: u32,
-    current_position: f32, 
+    current_position: f32,
+
 }
 
 
 // #[qtbridge::qobject(Base = QParserStatus)]
 #[qobject]
 impl Backend{
-    qproperty!("is_play", Member = is_play, Write = set_pause, Notify = is_play_changed);
+    qproperty!("is_play", Member = is_play, Write = set_is_play, Notify = is_play_changed);
     // qproperty!("currentSong", Member = current_song, Write = set_current_song, Notify = current_song_changed);
     // qproperty!("currentTitle", Read = get_current_title, Notify = current_song_changed);
     // qproperty!("currentAlbum", Read = get_current_album, Notify = current_song_changed);
     // qproperty!("currentSong", Member = current_song);
     qproperty!("currentSong", Member = current_song, Notify = current_song_changed);
     qproperty!("currentId", Member = current_id, Notify = current_song_changed);
-    qproperty!("currentPosition", Member = current_position, Notify = current_song_changed);
+    qproperty!("currentPosition", Member = current_position, Write = set_current_song, Notify = current_position_changed);
     qproperty!("queue", Member = queue, Notify = queue_changed);
     #[qsignal]
     fn queue_changed(&mut self);
@@ -56,6 +57,17 @@ impl Backend{
             let mut master = Master::new(handle);
             master.run().await;
         });
+        
+    }
+
+    #[qslot]
+    fn seek_current_time(&self, time: f32){
+        if let Some(sender) = &self.sender_to_worker{
+            let tx = sender.clone();
+            tokio::spawn(async move{
+                let _ = tx.send(Command::Seek(time)).await;
+            });
+        }
         
     }
 
@@ -132,9 +144,23 @@ impl Backend{
         }
     }
 
-    pub fn set_pause(&mut self,is_play: bool){
+    // pub fn set_pause(&mut self,is_play: bool, current_position: f32){
+    //     self.is_play = is_play;
+    //     self.current_position = current_position;
+    //     self.is_play_changed();
+    // }
+
+    fn set_current_song(&mut self, current_position: f32){
+        self.current_position = current_position;
+        self.current_position_changed();
+    }
+    fn set_is_play(&mut self,is_play: bool){
         self.is_play = is_play;
         self.is_play_changed();
+    }
+    pub fn update_status(&mut self, is_play: bool, current_position: f32) {
+        self.set_current_song(current_position);
+        self.set_is_play(is_play);
     }
 
     #[qsignal]
@@ -165,7 +191,6 @@ impl  Default for Backend {
         Self { 
             is_play: false,
             current_song: Rc::new(RefCell::new(Song::default())),
-            // current_song: SongS::default(),
             runtime,
             sender_to_worker: None,
             queue: Default::default(),

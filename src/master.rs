@@ -145,7 +145,8 @@ impl Master{
             State::Play => true,
             _ => false, 
         };
-        self.handle.invoke_mut(move|backend| backend.set_pause(is_play));
+        let crr = self.status.elapsed;
+        self.handle.invoke_mut(move|backend| backend.update_status(is_play,crr));
 
     }
    

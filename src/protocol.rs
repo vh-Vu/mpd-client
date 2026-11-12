@@ -252,18 +252,21 @@ pub enum Command{
     CurrentSong,
     Status,
     GetQueue,
+    Seek(f32)
 }
 
 impl Command{
-    pub fn as_bytes(&self) -> &[u8]{
+    pub fn as_bytes(&self) -> Vec<u8>{
         match self {
-            Command::Play => b"play\n",
-            Command::Pause => b"pause\n",
-            Command::Next => b"next\n",
-            Command::Previous => b"previous\n",
-            Command::CurrentSong => b"currentsong\n",
-            Command::Status => b"status\n",
-            Command::GetQueue => b"playlistinfo\n",
+            Command::Play => b"play\n".to_vec(),
+            Command::Pause => b"pause\n".to_vec(),
+            Command::Next => b"next\n".to_vec(),
+            Command::Previous => b"previous\n".to_vec(),
+            Command::CurrentSong => b"currentsong\n".to_vec(),
+            Command::Status => b"status\n".to_vec(),
+            Command::GetQueue => b"playlistinfo\n".to_vec(),
+            Command::Seek(time) => format!("seekcur {}\n", time).into_bytes(),
+
         }
     }
 }
