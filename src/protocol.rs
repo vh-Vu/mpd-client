@@ -252,7 +252,9 @@ pub enum Command{
     CurrentSong,
     Status,
     GetQueue,
-    Seek(f32)
+    Seek(f32),
+    MoveSong{song_id: u32, pos: u32},
+    PlayID(u32)
 }
 
 impl Command{
@@ -266,7 +268,8 @@ impl Command{
             Command::Status => b"status\n".to_vec(),
             Command::GetQueue => b"playlistinfo\n".to_vec(),
             Command::Seek(time) => format!("seekcur {}\n", time).into_bytes(),
-
+            Command::MoveSong { song_id, pos } => format!("moveid {} {}\n", *song_id,*pos).into_bytes(),
+            Command::PlayID(id) => format!("playid {}\n", *id).into_bytes(),
         }
     }
 }
@@ -396,7 +399,7 @@ impl Song{
     qproperty!("pos", Member = pos, Notify = data_changed);
     qproperty!("key", Member = key, Notify = data_changed);
     qproperty!("year", Member = year, Notify = data_changed);
-    qproperty!("bitDeep", Member = bit_deep, Notify = data_changed);
+    qproperty!("bitsDeep", Member = bit_deep, Notify = data_changed);
     qproperty!("sampleRate", Member = sample_rate, Notify = data_changed);
     #[qsignal]
     fn data_changed(&mut self);

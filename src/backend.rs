@@ -71,6 +71,32 @@ impl Backend{
         
     }
 
+    #[qslot]
+    fn new_xx(&self, mut pos: u32,song_seleted: Vec<u32> ){
+        let len = self.queue.len() as u32;
+        if pos == len && pos > 0{
+            pos-=1;
+        }
+        if let Some(tx) = &self.sender_to_worker {
+            let sender = tx.clone();
+            tokio::spawn(async move{
+                for id in song_seleted{
+                    let _ = sender.send(Command::MoveSong { song_id: id, pos }).await;
+                }
+            });
+        }
+        // println!("in tai {} {:?}",pos,song_seleted);
+    }
+
+    #[qslot]
+    fn play_song_at_id(&self, id: u32){
+        if let Some(tx) = &self.sender_to_worker {
+            let sender = tx.clone();
+            tokio::spawn(async move{
+                let _ = sender.send(Command::PlayID(id)).await;
+            });
+        }
+    }
     pub fn set_current_song_by_pos(&mut self, pos: u32){
         self.current_song = self.queue[pos as usize].clone();
         self.current_id = pos;

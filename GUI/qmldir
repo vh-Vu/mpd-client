@@ -2,3 +2,5 @@ module mpd_client
 Main 1.0 Main.qml
 Cover 1.0 Cover.qml
 SeekBar 1.0 SeekBar.qml
+Queue 1.0 Queue.qml
+Clock 1.0 Clock.qml
